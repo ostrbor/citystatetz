@@ -3,9 +3,10 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"github.com/gobuffalo/packr"
 	"log"
 	"net/http"
+	"os"
 )
 
 type record struct {
@@ -22,7 +23,8 @@ func check(err error) {
 }
 
 func main() {
-	f, err := ioutil.ReadFile("./us.json")
+	box := packr.NewBox("./static")
+	f, err := box.Find("./static/us.json")
 	check(err)
 	records := make([]record, 0)
 	err = json.Unmarshal(f, &records)
@@ -36,15 +38,26 @@ func main() {
 	http.HandleFunc("/timezone", func(w http.ResponseWriter, r *http.Request) {
 		req := request{}
 		err := json.NewDecoder(r.Body).Decode(&req)
-		check(err)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte(err.Error()))
+		}
 		for _, r := range records {
 			if r.State == req.State && r.City == req.City {
 				_, err = w.Write([]byte(fmt.Sprintf(`{"timezone":"%s"}`, r.Timezone)))
-				check(err)
+				if err != nil {
+					w.WriteHeader(http.StatusInternalServerError)
+					w.Write([]byte(err.Error()))
+				}
 			}
 		}
-
+		w.WriteHeader(http.StatusNotFound)
 	})
 
-	log.Fatal(http.ListenAndServe(":8888", nil))
+	port, ok := os.LookupEnv("PORT")
+	if !ok {
+		port = "8888"
+	}
+
+	log.Fatal(http.ListenAndServe(":"+port, nil))
 }
